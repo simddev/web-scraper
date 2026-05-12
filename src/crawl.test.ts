@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeURL, getHeadingFromHTML, getFirstParagraphFromHTML, getURLsFromHTML, getImagesFromHTML } from "./crawl.js";
+import { normalizeURL, getHeadingFromHTML, getFirstParagraphFromHTML, getURLsFromHTML, getImagesFromHTML, extractPageData } from "./crawl.js";
 
 describe("normalizeURL", () => {
   it("strips the https scheme", () => {
@@ -163,5 +163,56 @@ describe("getImagesFromHTML", () => {
     expect(getImagesFromHTML(html, "https://crawler-test.com")).toEqual([
       "https://crawler-test.com/valid.png",
     ]);
+  });
+});
+
+describe("extractPageData", () => {
+  it("extracts all fields from a full page", () => {
+    const html = `
+      <html><body>
+        <h1>Test Title</h1>
+        <p>This is the first paragraph.</p>
+        <a href="/link1">Link 1</a>
+        <img src="/image1.jpg" alt="Image 1">
+      </body></html>
+    `;
+    expect(extractPageData(html, "https://crawler-test.com")).toEqual({
+      url: "https://crawler-test.com",
+      heading: "Test Title",
+      first_paragraph: "This is the first paragraph.",
+      outgoing_links: ["https://crawler-test.com/link1"],
+      image_urls: ["https://crawler-test.com/image1.jpg"],
+    });
+  });
+
+  it("returns empty strings and arrays when page has no content", () => {
+    const html = `<html><body></body></html>`;
+    expect(extractPageData(html, "https://crawler-test.com")).toEqual({
+      url: "https://crawler-test.com",
+      heading: "",
+      first_paragraph: "",
+      outgoing_links: [],
+      image_urls: [],
+    });
+  });
+
+  it("resolves multiple relative links and images", () => {
+    const html = `
+      <html><body>
+        <h2>Sub Heading</h2>
+        <main><p>Main content.</p></main>
+        <a href="/a">A</a>
+        <a href="/b">B</a>
+        <img src="/x.png" alt="">
+        <img src="/y.png" alt="">
+      </body></html>
+    `;
+    expect(extractPageData(html, "https://example.com")).toEqual({
+      url: "https://example.com",
+      heading: "Sub Heading",
+      first_paragraph: "Main content.",
+      outgoing_links: ["https://example.com/a", "https://example.com/b"],
+      image_urls: ["https://example.com/x.png", "https://example.com/y.png"],
+    });
   });
 });

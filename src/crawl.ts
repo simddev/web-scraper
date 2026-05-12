@@ -32,6 +32,24 @@ export function getURLsFromHTML(html: string, baseURL: string): string[] {
   return urls;
 }
 
+export type ExtractedPageData = {
+  url: string;
+  heading: string;
+  first_paragraph: string;
+  outgoing_links: string[];
+  image_urls: string[];
+};
+
+export function extractPageData(html: string, pageURL: string): ExtractedPageData {
+  return {
+    url: pageURL,
+    heading: getHeadingFromHTML(html),
+    first_paragraph: getFirstParagraphFromHTML(html),
+    outgoing_links: getURLsFromHTML(html, pageURL),
+    image_urls: getImagesFromHTML(html, pageURL),
+  };
+}
+
 export function getImagesFromHTML(html: string, baseURL: string): string[] {
   const dom = new JSDOM(html);
   const imgs = dom.window.document.querySelectorAll("img");
