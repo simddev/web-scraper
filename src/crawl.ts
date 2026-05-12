@@ -50,6 +50,63 @@ export function extractPageData(html: string, pageURL: string): ExtractedPageDat
   };
 }
 
+export async function crawlPage(
+  baseURL: string,
+  currentURL: string = baseURL,
+  pages: Record<string, number> = {},
+): Promise<Record<string, number>> {
+  const base = new URL(baseURL);
+  const current = new URL(currentURL);
+
+  if (base.hostname !== current.hostname) {
+    return pages;
+  }
+
+  const normalized = normalizeURL(currentURL);
+
+  if (pages[normalized] !== undefined) {
+    pages[normalized]++;
+    return pages;
+  }
+
+  pages[normalized] = 1;
+  console.log(`Crawling: ${currentURL}`);
+
+  const html = await getHTML(currentURL);
+  if (!html) return pages;
+
+  const links = getURLsFromHTML(html, baseURL);
+  for (const link of links) {
+    pages = await crawlPage(baseURL, link, pages);
+  }
+
+  return pages;
+}
+
+export async function getHTML(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "BootCrawler/1.0" },
+    });
+
+    if (response.status >= 400) {
+      console.error(`Error: received status ${response.status} from ${url}`);
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("text/html")) {
+      console.error(`Error: expected text/html but got ${contentType} from ${url}`);
+      return null;
+    }
+
+    return await response.text();
+  } catch (err) {
+    console.error(`Error fetching ${url}: ${err}`);
+    return null;
+  }
+}
+
 export function getImagesFromHTML(html: string, baseURL: string): string[] {
   const dom = new JSDOM(html);
   const imgs = dom.window.document.querySelectorAll("img");
