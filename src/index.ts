@@ -31,10 +31,12 @@ async function main() {
 
   const pages = await crawlSiteAsync(baseURL, maxConcurrency, maxPages);
 
-  console.log("\n=== Crawl Report ===");
-  const sorted = Object.entries(pages).sort(([, a], [, b]) => b - a);
-  for (const [url, count] of sorted) {
-    console.log(`${url}: ${count}`);
+  console.log("Finished crawling.");
+  const firstPage = Object.values(pages)[0];
+  if (firstPage) {
+    console.log(
+      `First page record: ${firstPage["url"]} - ${firstPage["heading"]}`,
+    );
   }
 }
 
