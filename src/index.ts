@@ -1,4 +1,5 @@
 import { crawlSiteAsync } from "./crawl.js";
+import { writeJSONReport } from "./report.js";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -38,6 +39,8 @@ async function main() {
       `First page record: ${firstPage["url"]} - ${firstPage["heading"]}`,
     );
   }
+
+  writeJSONReport(pages, "report.json");
 }
 
 main();
