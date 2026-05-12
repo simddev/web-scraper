@@ -1,0 +1,26 @@
+{
+  "name": "web-scraper",
+  "version": "1.0.0",
+  "description": "A web crawler written in TypeScript",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "tsx ./src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simddev/web-scraper.git"
+  },
+  "author": "simddev",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/simddev/web-scraper/issues"
+  },
+  "homepage": "https://github.com/simddev/web-scraper#readme",
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
