@@ -19,9 +19,13 @@
   },
   "homepage": "https://github.com/simddev/web-scraper#readme",
   "devDependencies": {
+    "@types/jsdom": "^28.0.2",
     "@types/node": "^25.7.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
+  },
+  "dependencies": {
+    "jsdom": "^29.1.1"
   }
 }
