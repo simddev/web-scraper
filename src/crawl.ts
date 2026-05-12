@@ -75,20 +75,35 @@ class ConcurrentCrawler {
   private baseURL: string;
   private pages: Record<string, number>;
   private limit: ReturnType<typeof pLimit>;
+  private maxPages: number;
+  private shouldStop: boolean;
+  private allTasks: Set<Promise<void>>;
 
-  constructor(baseURL: string, maxConcurrency: number) {
+  constructor(baseURL: string, maxConcurrency: number, maxPages: number) {
     this.baseURL = baseURL;
     this.pages = {};
     this.limit = pLimit(maxConcurrency);
+    this.maxPages = maxPages;
+    this.shouldStop = false;
+    this.allTasks = new Set();
   }
 
-  // Returns true on first visit, false if already seen.
-  // Synchronous so it's atomic in JS's single-threaded event loop.
+  // Synchronous — atomic in JS's single-threaded event loop.
+  // Returns true only on the first visit to a URL.
   private addPageVisit(normalizedURL: string): boolean {
+    if (this.shouldStop) return false;
+
     if (this.pages[normalizedURL] !== undefined) {
       this.pages[normalizedURL]++;
       return false;
     }
+
+    if (Object.keys(this.pages).length >= this.maxPages) {
+      this.shouldStop = true;
+      console.log("Reached maximum number of pages to crawl.");
+      return false;
+    }
+
     this.pages[normalizedURL] = 1;
     return true;
   }
@@ -120,6 +135,8 @@ class ConcurrentCrawler {
   }
 
   private async crawlPage(currentURL: string): Promise<void> {
+    if (this.shouldStop) return;
+
     let current: URL;
     try {
       current = new URL(currentURL);
@@ -140,11 +157,23 @@ class ConcurrentCrawler {
     if (!html) return;
 
     const links = getURLsFromHTML(html, this.baseURL);
-    await Promise.all(links.map((link) => this.crawlPage(link)));
+    const promises = links.map((link) => {
+      let task: Promise<void>;
+      task = this.crawlPage(link).finally(() => this.allTasks.delete(task));
+      this.allTasks.add(task);
+      return task;
+    });
+    await Promise.all(promises);
   }
 
   async crawl(): Promise<Record<string, number>> {
-    await this.crawlPage(this.baseURL);
+    let task: Promise<void>;
+    task = this.crawlPage(this.baseURL).finally(() => this.allTasks.delete(task));
+    this.allTasks.add(task);
+    await task;
+    while (this.allTasks.size > 0) {
+      await Promise.all([...this.allTasks]);
+    }
     return this.pages;
   }
 }
@@ -152,7 +181,8 @@ class ConcurrentCrawler {
 export async function crawlSiteAsync(
   baseURL: string,
   maxConcurrency: number = 5,
+  maxPages: number = 100,
 ): Promise<Record<string, number>> {
-  const crawler = new ConcurrentCrawler(baseURL, maxConcurrency);
+  const crawler = new ConcurrentCrawler(baseURL, maxConcurrency, maxPages);
   return await crawler.crawl();
 }
