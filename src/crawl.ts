@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom";
+import pLimit from "p-limit";
 
 export function normalizeURL(urlString: string): string {
   const url = new URL(urlString);
@@ -27,7 +28,11 @@ export function getURLsFromHTML(html: string, baseURL: string): string[] {
   for (const anchor of anchors) {
     const href = anchor.getAttribute("href");
     if (!href) continue;
-    urls.push(new URL(href, baseURL).href);
+    try {
+      urls.push(new URL(href, baseURL).href);
+    } catch {
+      // skip malformed hrefs
+    }
   }
   return urls;
 }
@@ -50,63 +55,6 @@ export function extractPageData(html: string, pageURL: string): ExtractedPageDat
   };
 }
 
-export async function crawlPage(
-  baseURL: string,
-  currentURL: string = baseURL,
-  pages: Record<string, number> = {},
-): Promise<Record<string, number>> {
-  const base = new URL(baseURL);
-  const current = new URL(currentURL);
-
-  if (base.hostname !== current.hostname) {
-    return pages;
-  }
-
-  const normalized = normalizeURL(currentURL);
-
-  if (pages[normalized] !== undefined) {
-    pages[normalized]++;
-    return pages;
-  }
-
-  pages[normalized] = 1;
-  console.log(`Crawling: ${currentURL}`);
-
-  const html = await getHTML(currentURL);
-  if (!html) return pages;
-
-  const links = getURLsFromHTML(html, baseURL);
-  for (const link of links) {
-    pages = await crawlPage(baseURL, link, pages);
-  }
-
-  return pages;
-}
-
-export async function getHTML(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url, {
-      headers: { "User-Agent": "BootCrawler/1.0" },
-    });
-
-    if (response.status >= 400) {
-      console.error(`Error: received status ${response.status} from ${url}`);
-      return null;
-    }
-
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("text/html")) {
-      console.error(`Error: expected text/html but got ${contentType} from ${url}`);
-      return null;
-    }
-
-    return await response.text();
-  } catch (err) {
-    console.error(`Error fetching ${url}: ${err}`);
-    return null;
-  }
-}
-
 export function getImagesFromHTML(html: string, baseURL: string): string[] {
   const dom = new JSDOM(html);
   const imgs = dom.window.document.querySelectorAll("img");
@@ -114,7 +62,97 @@ export function getImagesFromHTML(html: string, baseURL: string): string[] {
   for (const img of imgs) {
     const src = img.getAttribute("src");
     if (!src) continue;
-    urls.push(new URL(src, baseURL).href);
+    try {
+      urls.push(new URL(src, baseURL).href);
+    } catch {
+      // skip malformed srcs
+    }
   }
   return urls;
+}
+
+class ConcurrentCrawler {
+  private baseURL: string;
+  private pages: Record<string, number>;
+  private limit: ReturnType<typeof pLimit>;
+
+  constructor(baseURL: string, maxConcurrency: number) {
+    this.baseURL = baseURL;
+    this.pages = {};
+    this.limit = pLimit(maxConcurrency);
+  }
+
+  // Returns true on first visit, false if already seen.
+  // Synchronous so it's atomic in JS's single-threaded event loop.
+  private addPageVisit(normalizedURL: string): boolean {
+    if (this.pages[normalizedURL] !== undefined) {
+      this.pages[normalizedURL]++;
+      return false;
+    }
+    this.pages[normalizedURL] = 1;
+    return true;
+  }
+
+  private async getHTML(currentURL: string): Promise<string | null> {
+    return await this.limit(async () => {
+      try {
+        const response = await fetch(currentURL, {
+          headers: { "User-Agent": "BootCrawler/1.0" },
+        });
+
+        if (response.status >= 400) {
+          console.error(`Error: received status ${response.status} from ${currentURL}`);
+          return null;
+        }
+
+        const contentType = response.headers.get("content-type") ?? "";
+        if (!contentType.includes("text/html")) {
+          console.error(`Error: expected text/html but got ${contentType} from ${currentURL}`);
+          return null;
+        }
+
+        return await response.text();
+      } catch (err) {
+        console.error(`Error fetching ${currentURL}: ${err}`);
+        return null;
+      }
+    });
+  }
+
+  private async crawlPage(currentURL: string): Promise<void> {
+    let current: URL;
+    try {
+      current = new URL(currentURL);
+    } catch {
+      return;
+    }
+
+    const base = new URL(this.baseURL);
+    if (current.hostname !== base.hostname) return;
+
+    const normalized = normalizeURL(currentURL);
+    const isNew = this.addPageVisit(normalized);
+    if (!isNew) return;
+
+    console.log(`Crawling: ${currentURL}`);
+
+    const html = await this.getHTML(currentURL);
+    if (!html) return;
+
+    const links = getURLsFromHTML(html, this.baseURL);
+    await Promise.all(links.map((link) => this.crawlPage(link)));
+  }
+
+  async crawl(): Promise<Record<string, number>> {
+    await this.crawlPage(this.baseURL);
+    return this.pages;
+  }
+}
+
+export async function crawlSiteAsync(
+  baseURL: string,
+  maxConcurrency: number = 5,
+): Promise<Record<string, number>> {
+  const crawler = new ConcurrentCrawler(baseURL, maxConcurrency);
+  return await crawler.crawl();
 }
