@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeURL, getHeadingFromHTML, getFirstParagraphFromHTML } from "./crawl.js";
+import { normalizeURL, getHeadingFromHTML, getFirstParagraphFromHTML, getURLsFromHTML, getImagesFromHTML } from "./crawl.js";
 
 describe("normalizeURL", () => {
   it("strips the https scheme", () => {
@@ -89,5 +89,79 @@ describe("getFirstParagraphFromHTML", () => {
   it("returns empty string when no p tag is found", () => {
     const html = `<html><body><h1>Just a heading</h1></body></html>`;
     expect(getFirstParagraphFromHTML(html)).toEqual("");
+  });
+});
+
+describe("getURLsFromHTML", () => {
+  it("returns an absolute URL unchanged", () => {
+    const html = `<html><body><a href="https://crawler-test.com/about">About</a></body></html>`;
+    expect(getURLsFromHTML(html, "https://crawler-test.com")).toEqual([
+      "https://crawler-test.com/about",
+    ]);
+  });
+
+  it("converts a relative URL to absolute", () => {
+    const html = `<html><body><a href="/path/one"><span>Boot.dev</span></a></body></html>`;
+    expect(getURLsFromHTML(html, "https://crawler-test.com")).toEqual([
+      "https://crawler-test.com/path/one",
+    ]);
+  });
+
+  it("returns all anchor URLs from the page", () => {
+    const html = `
+      <html><body>
+        <a href="/one">One</a>
+        <a href="/two">Two</a>
+        <a href="https://other.com/three">Three</a>
+      </body></html>
+    `;
+    expect(getURLsFromHTML(html, "https://crawler-test.com")).toEqual([
+      "https://crawler-test.com/one",
+      "https://crawler-test.com/two",
+      "https://other.com/three",
+    ]);
+  });
+
+  it("skips anchors with no href attribute", () => {
+    const html = `<html><body><a>No href</a><a href="/valid">Valid</a></body></html>`;
+    expect(getURLsFromHTML(html, "https://crawler-test.com")).toEqual([
+      "https://crawler-test.com/valid",
+    ]);
+  });
+});
+
+describe("getImagesFromHTML", () => {
+  it("converts a relative image src to absolute", () => {
+    const html = `<html><body><img src="/logo.png" alt="Logo"></body></html>`;
+    expect(getImagesFromHTML(html, "https://crawler-test.com")).toEqual([
+      "https://crawler-test.com/logo.png",
+    ]);
+  });
+
+  it("returns an absolute image src unchanged", () => {
+    const html = `<html><body><img src="https://cdn.example.com/img.jpg" alt=""></body></html>`;
+    expect(getImagesFromHTML(html, "https://crawler-test.com")).toEqual([
+      "https://cdn.example.com/img.jpg",
+    ]);
+  });
+
+  it("returns all image URLs from the page", () => {
+    const html = `
+      <html><body>
+        <img src="/a.png" alt="A">
+        <img src="/b.png" alt="B">
+      </body></html>
+    `;
+    expect(getImagesFromHTML(html, "https://crawler-test.com")).toEqual([
+      "https://crawler-test.com/a.png",
+      "https://crawler-test.com/b.png",
+    ]);
+  });
+
+  it("skips img tags with no src attribute", () => {
+    const html = `<html><body><img alt="no src"><img src="/valid.png" alt=""></body></html>`;
+    expect(getImagesFromHTML(html, "https://crawler-test.com")).toEqual([
+      "https://crawler-test.com/valid.png",
+    ]);
   });
 });
